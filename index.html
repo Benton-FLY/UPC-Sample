@@ -434,14 +434,25 @@
           .trim();
       }
 
-      function normalizePartNo(value) {
+      function normalizeText(value) {
         return String(value ?? "")
-          .replace(/\u00a0/g, "")
-          .replace(/[\r\n]/g, "")
-          .replace(/[\u2010-\u2015\u2212\ufe58\ufe63\uff0d]/g, "-")
-          .replace(/\s+/g, "")
+          .replace(/\u00a0/g, " ")
+          .replace(/[‐-‒–—―]/g, "-")
+          .replace(/\r?\n|\r/g, "")
           .trim()
           .toUpperCase();
+      }
+
+      function makeMarketingPartNoKey(partNo) {
+        let key = normalizeText(partNo);
+        if (key.startsWith("M")) {
+          key = key.slice(1);
+        }
+        return key;
+      }
+
+      function makeWpsKey(wpsNo) {
+        return normalizeText(wpsNo);
       }
 
       function compactText(parts) {
@@ -558,21 +569,21 @@
           .forEach((row) => {
             rowCount += 1;
             const wps = valueAt(row, headerInfo, "WPS#");
-            const normalizedWps = normalizePartNo(wps);
-            if (!normalizedWps) return;
+            const wpsKey = makeWpsKey(wps);
+            if (!wpsKey) return;
             wpsCount += 1;
             if (firstWpsValues.length < 10) firstWpsValues.push(wps);
             const entry = {
-              originalWps: wps,
-              normalizedWps,
-              description1: valueAt(row, headerInfo, "DESCRIPTION 1").trim(),
-              description2: valueAt(row, headerInfo, "DESCRIPTION 2").trim(),
+              wps,
+              wpsKey,
+              description1: String(valueAt(row, headerInfo, "DESCRIPTION 1") ?? "").trim(),
+              description2: String(valueAt(row, headerInfo, "DESCRIPTION 2") ?? "").trim(),
             };
-            if (lookup.has(normalizedWps)) {
-              duplicates.add(normalizedWps);
+            if (lookup.has(wpsKey)) {
+              duplicates.add(wpsKey);
               return;
             }
-            lookup.set(normalizedWps, entry);
+            lookup.set(wpsKey, entry);
           });
 
         return {
@@ -593,18 +604,24 @@
         let blankPartNo = 0;
 
         marketingRows.forEach((source) => {
-          const partNo = source["Part No"];
-          const normalizedPartNo = normalizePartNo(partNo);
-          if (firstPartNoValues.length < 10 && partNo) firstPartNoValues.push(partNo);
-          const duplicate = buyerData.duplicates.has(normalizedPartNo);
-          const buyer = normalizedPartNo ? buyerData.lookup.get(normalizedPartNo) : null;
+          const originalPartNo = source["Part No"];
+          const matchKey = makeMarketingPartNoKey(originalPartNo);
+          if (firstPartNoValues.length < 10 && originalPartNo) firstPartNoValues.push(originalPartNo);
+          const duplicate = buyerData.duplicates.has(matchKey);
+          const buyer = matchKey ? buyerData.lookup.get(matchKey) : null;
           const hasMatch = Boolean(buyer);
-          const barcode = hasMatch ? compactText(["FLY", buyer.description1, buyer.description2]) : partNo ? "NO UPC MATCH" : "PART NO BLANK";
+          const barcode = hasMatch ? compactText(["FLY", buyer.description1, buyer.description2]) : originalPartNo ? "NO UPC MATCH" : "PART NO BLANK";
           const helperValue = hasMatch ? barcode : "";
 
-          if (!partNo) blankPartNo += 1;
+          if (!originalPartNo) blankPartNo += 1;
           if (hasMatch) matched += 1;
-          if (!hasMatch) failedPartNos.push({ partNo, normalizedPartNo, reason: partNo ? "NO UPC MATCH" : "PART NO BLANK" });
+          if (!hasMatch) {
+            failedPartNos.push({
+              partNo: originalPartNo,
+              matchKey,
+              reason: originalPartNo ? "NO UPC MATCH" : "PART NO BLANK",
+            });
+          }
 
           processed.push({
             values: [
@@ -616,7 +633,7 @@
               source.Color,
               source.Size,
               source.Unit,
-              partNo,
+              originalPartNo,
               "FLY ",
               buyer?.description1 || "",
               buyer?.description2 || "",
@@ -631,11 +648,12 @@
             ],
             source,
             matched: hasMatch,
-            blankPartNo: !partNo,
-            normalizedPartNo,
-            originalWps: buyer?.originalWps || "",
+            blankPartNo: !originalPartNo,
+            originalPartNo,
+            matchKey,
+            matchedWps: buyer?.wps || "",
             duplicate,
-            reviewStatus: !partNo ? "blank" : hasMatch ? (duplicate ? "duplicate" : "matched") : "missing",
+            reviewStatus: !originalPartNo ? "PART NO BLANK" : hasMatch ? (duplicate ? "MATCHED - DUPLICATE WPS" : "MATCHED") : "NO UPC MATCH",
           });
         });
 
@@ -666,7 +684,7 @@
         const warnings = [];
 
         expected.forEach((expectedBarcode, expectedPartNo) => {
-          const row = processed.find((item) => item.normalizedPartNo === expectedPartNo);
+          const row = processed.find((item) => normalizeText(item.originalPartNo) === normalizeText(expectedPartNo));
           if (!row) return;
           const actualBarcode = row.values[13];
           if (actualBarcode !== expectedBarcode) {
@@ -754,13 +772,25 @@
           ["WPS# duplicate count", summary.duplicateWps],
           [],
           ["First 10 WPS# values from Buyer UPC"],
-          ...summary.firstBuyerWpsValues.map((wps, index) => [index + 1, wps, normalizePartNo(wps)]),
+          ...summary.firstBuyerWpsValues.map((wps, index) => [index + 1, wps, makeWpsKey(wps)]),
           [],
           ["First 10 Marketing PO Part No values"],
-          ...summary.firstMarketingPartNoValues.map((partNo, index) => [index + 1, partNo, normalizePartNo(partNo)]),
+          ...summary.firstMarketingPartNoValues.map((partNo, index) => [index + 1, partNo, makeMarketingPartNoKey(partNo)]),
           [],
-          ["매칭 실패 Part No 목록", "Normalized Part No", "Reason"],
-          ...summary.failedPartNos.map((item) => [item.partNo, item.normalizedPartNo, item.reason]),
+          ["Detailed match review"],
+          ["Original Part No", "Match Key after removing M", "Matched WPS#", "DESCRIPTION 1", "DESCRIPTION 2", "Final N column value", "Match status"],
+          ...processed.map((row) => [
+            row.originalPartNo,
+            row.matchKey,
+            row.matchedWps,
+            row.values[10],
+            row.values[11],
+            row.values[13],
+            row.reviewStatus,
+          ]),
+          [],
+          ["매칭 실패 Part No 목록", "Match Key after removing M", "Reason"],
+          ...summary.failedPartNos.map((item) => [item.partNo, item.matchKey, item.reason]),
           [],
           ["중복 WPS# 목록"],
           ...summary.duplicateWpsList.map((wps) => [wps]),
@@ -769,7 +799,7 @@
           ...summary.expectedWarnings.map((warning) => [warning]),
         ];
         const reviewWs = XLSX.utils.aoa_to_sheet(review);
-        reviewWs["!cols"] = [{ wch: 38 }, { wch: 28 }, { wch: 18 }];
+        reviewWs["!cols"] = [{ wch: 38 }, { wch: 28 }, { wch: 18 }, { wch: 34 }, { wch: 30 }, { wch: 52 }, { wch: 22 }];
         styleReviewSheet(reviewWs, summary);
 
         const wb = XLSX.utils.book_new();
@@ -791,12 +821,15 @@
         const range = XLSX.utils.decode_range(ws["!ref"] || "A1:B1");
         const buyerPreviewHeadingRow = 10;
         const marketingPreviewHeadingRow = 12 + summary.firstBuyerWpsValues.length;
-        const failedHeadingRow = 14 + summary.firstBuyerWpsValues.length + summary.firstMarketingPartNoValues.length;
-        const duplicateHeadingRow = 16 + summary.firstBuyerWpsValues.length + summary.firstMarketingPartNoValues.length + summary.failedPartNos.length;
+        const detailedHeadingRow = 14 + summary.firstBuyerWpsValues.length + summary.firstMarketingPartNoValues.length;
+        const detailedTableHeaderRow = detailedHeadingRow + 1;
+        const failedHeadingRow = 17 + summary.firstBuyerWpsValues.length + summary.firstMarketingPartNoValues.length + summary.total;
+        const duplicateHeadingRow = 19 + summary.firstBuyerWpsValues.length + summary.firstMarketingPartNoValues.length + summary.total + summary.failedPartNos.length;
         const validationHeadingRow =
-          18 +
+          21 +
           summary.firstBuyerWpsValues.length +
           summary.firstMarketingPartNoValues.length +
+          summary.total +
           summary.failedPartNos.length +
           summary.duplicateWpsList.length;
         for (let r = range.s.r; r <= range.e.r; r += 1) {
@@ -809,6 +842,8 @@
                 r === 0 ||
                 r === buyerPreviewHeadingRow ||
                 r === marketingPreviewHeadingRow ||
+                r === detailedHeadingRow ||
+                r === detailedTableHeaderRow ||
                 r === failedHeadingRow ||
                 r === duplicateHeadingRow ||
                 r === validationHeadingRow
@@ -952,7 +987,8 @@
           return;
         }
         if (state.summary?.expectedWarnings?.length) {
-          showMessage(`Validation warning before download:\n${state.summary.expectedWarnings.join("\n")}`, "warning");
+          showMessage(`Validation failed. Download blocked:\n${state.summary.expectedWarnings.join("\n")}`, "error");
+          return;
         }
         XLSX.writeFile(state.workbook, `marketing_po_processed_${timestamp()}.xlsx`);
       }
