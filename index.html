@@ -443,12 +443,19 @@
           .toUpperCase();
       }
 
-      function makeMarketingPartNoKey(partNo) {
-        let key = normalizeText(partNo);
-        if (key.startsWith("M")) {
-          key = key.slice(1);
+      function makeMarketingPartNoKeys(partNo) {
+        const key = normalizeText(partNo);
+        const keys = [];
+
+        if (key) {
+          keys.push(key);
+
+          if (/^[A-Z]/.test(key) && key.length > 1) {
+            keys.push(key.slice(1));
+          }
         }
-        return key;
+
+        return [...new Set(keys)];
       }
 
       function makeWpsKey(wpsNo) {
@@ -605,20 +612,37 @@
 
         marketingRows.forEach((source) => {
           const originalPartNo = source["Part No"];
-          const matchKey = makeMarketingPartNoKey(originalPartNo);
+          const triedMatchKeys = makeMarketingPartNoKeys(originalPartNo);
           if (firstPartNoValues.length < 10 && originalPartNo) firstPartNoValues.push(originalPartNo);
-          const duplicate = buyerData.duplicates.has(matchKey);
-          const buyer = matchKey ? buyerData.lookup.get(matchKey) : null;
+          let matchedKey = "";
+          let buyer = null;
+
+          for (const key of triedMatchKeys) {
+            if (buyerData.lookup.has(key)) {
+              matchedKey = key;
+              buyer = buyerData.lookup.get(key);
+              break;
+            }
+          }
+
+          const duplicate = matchedKey ? buyerData.duplicates.has(matchedKey) : false;
           const hasMatch = Boolean(buyer);
           const barcode = hasMatch ? compactText(["FLY", buyer.description1, buyer.description2]) : originalPartNo ? "NO UPC MATCH" : "PART NO BLANK";
           const helperValue = hasMatch ? barcode : "";
+          const matchMethod = !originalPartNo
+            ? "No Match"
+            : !hasMatch
+              ? "No Match"
+              : matchedKey === triedMatchKeys[0]
+                ? "Exact Match"
+                : "First Character Removed Match";
 
           if (!originalPartNo) blankPartNo += 1;
           if (hasMatch) matched += 1;
           if (!hasMatch) {
             failedPartNos.push({
               partNo: originalPartNo,
-              matchKey,
+              triedMatchKeys: triedMatchKeys.join(", "),
               reason: originalPartNo ? "NO UPC MATCH" : "PART NO BLANK",
             });
           }
@@ -650,8 +674,10 @@
             matched: hasMatch,
             blankPartNo: !originalPartNo,
             originalPartNo,
-            matchKey,
+            triedMatchKeys,
+            matchedKey,
             matchedWps: buyer?.wps || "",
+            matchMethod,
             duplicate,
             reviewStatus: !originalPartNo ? "PART NO BLANK" : hasMatch ? (duplicate ? "MATCHED - DUPLICATE WPS" : "MATCHED") : "NO UPC MATCH",
           });
@@ -775,22 +801,23 @@
           ...summary.firstBuyerWpsValues.map((wps, index) => [index + 1, wps, makeWpsKey(wps)]),
           [],
           ["First 10 Marketing PO Part No values"],
-          ...summary.firstMarketingPartNoValues.map((partNo, index) => [index + 1, partNo, makeMarketingPartNoKey(partNo)]),
+          ...summary.firstMarketingPartNoValues.map((partNo, index) => [index + 1, partNo, makeMarketingPartNoKeys(partNo).join(", ")]),
           [],
           ["Detailed match review"],
-          ["Original Part No", "Match Key after removing M", "Matched WPS#", "DESCRIPTION 1", "DESCRIPTION 2", "Final N column value", "Match status"],
+          ["Original Part No", "Tried Match Keys", "Matched Key", "Matched WPS#", "DESCRIPTION 1", "DESCRIPTION 2", "Final N column value", "Match Method"],
           ...processed.map((row) => [
             row.originalPartNo,
-            row.matchKey,
+            row.triedMatchKeys.join(", "),
+            row.matchedKey,
             row.matchedWps,
             row.values[10],
             row.values[11],
             row.values[13],
-            row.reviewStatus,
+            row.matchMethod,
           ]),
           [],
-          ["매칭 실패 Part No 목록", "Match Key after removing M", "Reason"],
-          ...summary.failedPartNos.map((item) => [item.partNo, item.matchKey, item.reason]),
+          ["매칭 실패 Part No 목록", "Tried Match Keys", "Reason"],
+          ...summary.failedPartNos.map((item) => [item.partNo, item.triedMatchKeys, item.reason]),
           [],
           ["중복 WPS# 목록"],
           ...summary.duplicateWpsList.map((wps) => [wps]),
@@ -799,7 +826,16 @@
           ...summary.expectedWarnings.map((warning) => [warning]),
         ];
         const reviewWs = XLSX.utils.aoa_to_sheet(review);
-        reviewWs["!cols"] = [{ wch: 38 }, { wch: 28 }, { wch: 18 }, { wch: 34 }, { wch: 30 }, { wch: 52 }, { wch: 22 }];
+        reviewWs["!cols"] = [
+          { wch: 38 },
+          { wch: 34 },
+          { wch: 18 },
+          { wch: 18 },
+          { wch: 34 },
+          { wch: 30 },
+          { wch: 52 },
+          { wch: 30 },
+        ];
         styleReviewSheet(reviewWs, summary);
 
         const wb = XLSX.utils.book_new();
