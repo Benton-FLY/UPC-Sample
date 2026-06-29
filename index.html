@@ -1,0 +1,808 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Marketing PO UPC Converter</title>
+    <script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js"></script>
+    <style>
+      :root {
+        color-scheme: light;
+        --bg: #f6f7f9;
+        --surface: #ffffff;
+        --surface-2: #eef2f6;
+        --text: #17202a;
+        --muted: #5f6b7a;
+        --line: #d9e0e8;
+        --accent: #2563eb;
+        --accent-strong: #1d4ed8;
+        --danger: #b42318;
+        --warn-bg: #fff3cd;
+        --error-bg: #fde2e1;
+        --ok: #147c4c;
+        font-family:
+          Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+          "Segoe UI", sans-serif;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--text);
+      }
+
+      main {
+        width: min(1280px, calc(100vw - 32px));
+        margin: 0 auto;
+        padding: 32px 0 48px;
+      }
+
+      header {
+        display: flex;
+        align-items: flex-end;
+        justify-content: space-between;
+        gap: 24px;
+        margin-bottom: 24px;
+      }
+
+      h1 {
+        margin: 0;
+        font-size: 30px;
+        line-height: 1.15;
+        letter-spacing: 0;
+      }
+
+      .subtitle {
+        margin: 8px 0 0;
+        color: var(--muted);
+        font-size: 14px;
+      }
+
+      .toolbar {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+      }
+
+      button {
+        min-height: 40px;
+        border: 1px solid transparent;
+        border-radius: 6px;
+        padding: 0 16px;
+        font-weight: 700;
+        font-size: 14px;
+        cursor: pointer;
+      }
+
+      button.primary {
+        background: var(--accent);
+        color: white;
+      }
+
+      button.primary:hover {
+        background: var(--accent-strong);
+      }
+
+      button.secondary {
+        background: var(--surface);
+        border-color: var(--line);
+        color: var(--text);
+      }
+
+      button:disabled {
+        cursor: not-allowed;
+        opacity: 0.45;
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 16px;
+        margin-bottom: 16px;
+      }
+
+      .panel {
+        background: var(--surface);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 18px;
+      }
+
+      .upload label {
+        display: block;
+        font-weight: 800;
+        margin-bottom: 10px;
+      }
+
+      .upload input {
+        display: block;
+        width: 100%;
+        border: 1px dashed #aab5c2;
+        background: var(--surface-2);
+        border-radius: 6px;
+        padding: 18px;
+        font-size: 14px;
+      }
+
+      .file-hint {
+        color: var(--muted);
+        font-size: 12px;
+        margin-top: 8px;
+      }
+
+      .message {
+        display: none;
+        border-radius: 6px;
+        padding: 12px 14px;
+        margin-bottom: 16px;
+        font-size: 14px;
+        white-space: pre-line;
+      }
+
+      .message.error {
+        display: block;
+        background: var(--error-bg);
+        color: var(--danger);
+        border: 1px solid #f4b5b2;
+      }
+
+      .message.info {
+        display: block;
+        background: #e8f1ff;
+        color: #173f88;
+        border: 1px solid #bfd5ff;
+      }
+
+      .summary {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 12px;
+        margin-bottom: 16px;
+      }
+
+      .metric {
+        background: var(--surface);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 14px;
+      }
+
+      .metric span {
+        display: block;
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 700;
+        text-transform: uppercase;
+      }
+
+      .metric strong {
+        display: block;
+        margin-top: 6px;
+        font-size: 26px;
+        line-height: 1;
+      }
+
+      .table-wrap {
+        overflow: auto;
+        max-height: 560px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--surface);
+      }
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        min-width: 1400px;
+        font-size: 13px;
+      }
+
+      th,
+      td {
+        border-bottom: 1px solid var(--line);
+        border-right: 1px solid var(--line);
+        padding: 8px 10px;
+        text-align: left;
+        vertical-align: top;
+        white-space: nowrap;
+      }
+
+      th {
+        position: sticky;
+        top: 0;
+        z-index: 1;
+        background: #edf2f7;
+        font-weight: 800;
+        text-align: center;
+      }
+
+      tr.warn td {
+        background: var(--warn-bg);
+      }
+
+      tr.error td {
+        background: var(--error-bg);
+      }
+
+      .empty {
+        color: var(--muted);
+        padding: 24px;
+        text-align: center;
+      }
+
+      .status {
+        color: var(--muted);
+        font-size: 13px;
+      }
+
+      @media (max-width: 820px) {
+        main {
+          width: min(100vw - 24px, 1280px);
+          padding-top: 20px;
+        }
+
+        header {
+          align-items: stretch;
+          flex-direction: column;
+        }
+
+        .toolbar {
+          justify-content: stretch;
+        }
+
+        .toolbar button {
+          flex: 1 1 160px;
+        }
+
+        .grid,
+        .summary {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header>
+        <div>
+          <h1>Marketing PO UPC Converter</h1>
+          <p class="subtitle">Files are parsed and exported locally in this browser.</p>
+        </div>
+        <div class="toolbar">
+          <button id="processBtn" class="primary" type="button">Process</button>
+          <button id="downloadBtn" class="secondary" type="button" disabled>Download Excel</button>
+        </div>
+      </header>
+
+      <section class="grid" aria-label="File upload">
+        <div class="panel upload">
+          <label for="marketingFile">Marketing PO File</label>
+          <input id="marketingFile" type="file" accept=".xls,.xlsx" />
+          <div class="file-hint">Uses the first sheet as raw Marketing PO data.</div>
+        </div>
+        <div class="panel upload">
+          <label for="buyerFile">Buyer UPC File</label>
+          <input id="buyerFile" type="file" accept=".xls,.xlsx" />
+          <div class="file-hint">Requires WPS#, DESCRIPTION 1, DESCRIPTION 2.</div>
+        </div>
+      </section>
+
+      <div id="message" class="message" role="alert"></div>
+
+      <section class="summary" aria-label="Process summary">
+        <div class="metric"><span>Total rows</span><strong id="totalRows">0</strong></div>
+        <div class="metric"><span>Matched</span><strong id="matchedRows">0</strong></div>
+        <div class="metric"><span>Missing / No match</span><strong id="missingRows">0</strong></div>
+        <div class="metric"><span>Duplicate WPS#</span><strong id="duplicateRows">0</strong></div>
+      </section>
+
+      <section class="panel">
+        <div class="toolbar" style="justify-content: space-between; margin-bottom: 12px">
+          <strong>Preview table</strong>
+          <span id="previewStatus" class="status">Top 20 rows after processing</span>
+        </div>
+        <div class="table-wrap">
+          <table id="previewTable" aria-label="Preview table"></table>
+          <div id="emptyPreview" class="empty">Upload both files, then click Process.</div>
+        </div>
+      </section>
+    </main>
+
+    <script>
+      const OUTPUT_HEADERS = [
+        "P/O",
+        "Division",
+        "상세Division",
+        "BYR",
+        "Style",
+        "Color",
+        "Size",
+        "Unit",
+        "Part No\n(상단)",
+        "FLY prefix helper",
+        "Description 1",
+        "Description 2",
+        "UPC helper",
+        "UPC 바코드 표기\n(하단)",
+        "P/O Date",
+        "[FHD] 최종 합의 선적일",
+        "Currency",
+        "조정Qty",
+        "Org P/O",
+        "SMS여부",
+      ];
+
+      const MARKETING_FIELDS = [
+        "P/O",
+        "Division",
+        "상세Division",
+        "BYR",
+        "Style",
+        "Color",
+        "Size",
+        "Unit",
+        "Part No",
+        "P/O Date",
+        "[FHD] 최종 합의 선적일",
+        "Currency",
+        "조정Qty",
+        "Org P/O",
+        "SMS여부",
+      ];
+
+      const BUYER_FIELDS = ["WPS#", "DESCRIPTION 1", "DESCRIPTION 2"];
+      const state = { workbook: null, rows: [], summary: null };
+
+      const els = {
+        marketingFile: document.getElementById("marketingFile"),
+        buyerFile: document.getElementById("buyerFile"),
+        processBtn: document.getElementById("processBtn"),
+        downloadBtn: document.getElementById("downloadBtn"),
+        message: document.getElementById("message"),
+        previewTable: document.getElementById("previewTable"),
+        emptyPreview: document.getElementById("emptyPreview"),
+        previewStatus: document.getElementById("previewStatus"),
+        totalRows: document.getElementById("totalRows"),
+        matchedRows: document.getElementById("matchedRows"),
+        missingRows: document.getElementById("missingRows"),
+        duplicateRows: document.getElementById("duplicateRows"),
+      };
+
+      els.processBtn.addEventListener("click", processFiles);
+      els.downloadBtn.addEventListener("click", downloadWorkbook);
+
+      function normalizeHeader(value) {
+        return String(value ?? "")
+          .replace(/\r?\n/g, " ")
+          .replace(/\s+/g, " ")
+          .trim()
+          .toUpperCase();
+      }
+
+      function normalizeKey(value) {
+        return String(value ?? "")
+          .replace(/\r?\n/g, " ")
+          .replace(/\s+/g, " ")
+          .trim();
+      }
+
+      function compactText(parts) {
+        return parts
+          .filter((part) => String(part ?? "").trim() !== "")
+          .join(" ")
+          .replace(/\s+/g, " ")
+          .trim();
+      }
+
+      function showMessage(text, type = "error") {
+        els.message.textContent = text;
+        els.message.className = `message ${type}`;
+      }
+
+      function clearMessage() {
+        els.message.textContent = "";
+        els.message.className = "message";
+      }
+
+      async function readWorkbook(file) {
+        const buffer = await file.arrayBuffer();
+        return XLSX.read(buffer, { type: "array", cellDates: true, raw: false });
+      }
+
+      function firstSheet(workbook) {
+        const sheetName = workbook.SheetNames[0];
+        if (!sheetName) throw new Error("The workbook has no sheets.");
+        return workbook.Sheets[sheetName];
+      }
+
+      function cellText(cell) {
+        if (!cell) return "";
+        if (cell.t === "d" && cell.v instanceof Date) return formatDate(cell.v);
+        if (cell.w != null) return String(cell.w).trim();
+        if (cell.v == null) return "";
+        return String(cell.v).trim();
+      }
+
+      function sheetRows(sheet) {
+        const range = XLSX.utils.decode_range(sheet["!ref"] || "A1:A1");
+        const rows = [];
+        for (let r = range.s.r; r <= range.e.r; r += 1) {
+          const row = [];
+          for (let c = range.s.c; c <= range.e.c; c += 1) {
+            const addr = XLSX.utils.encode_cell({ r, c });
+            row.push(cellText(sheet[addr]));
+          }
+          rows.push(row);
+        }
+        return rows;
+      }
+
+      function findHeaderMap(rows, requiredHeaders, fileLabel) {
+        const required = requiredHeaders.map((header) => ({
+          original: header,
+          normalized: normalizeHeader(header),
+        }));
+
+        let bestMissing = required;
+        for (let rowIndex = 0; rowIndex < Math.min(rows.length, 30); rowIndex += 1) {
+          const row = rows[rowIndex];
+          const map = new Map();
+          row.forEach((value, index) => {
+            const key = normalizeHeader(value);
+            if (key && !map.has(key)) map.set(key, index);
+          });
+
+          const missing = required.filter((header) => !map.has(header.normalized));
+          if (missing.length < bestMissing.length) bestMissing = missing;
+          if (missing.length === 0) {
+            return { rowIndex, map };
+          }
+        }
+
+        const missingNames = bestMissing.map((header) => header.original).join(", ");
+        throw new Error(`${fileLabel} file is missing required headers: ${missingNames}`);
+      }
+
+      function isBlankDataRow(row) {
+        return row.every((value) => normalizeKey(value) === "");
+      }
+
+      function valueAt(row, headerInfo, field) {
+        const index = headerInfo.map.get(normalizeHeader(field));
+        return index == null ? "" : normalizeKey(row[index]);
+      }
+
+      function parseMarketing(rows) {
+        const headerInfo = findHeaderMap(rows, MARKETING_FIELDS, "Marketing PO");
+        return rows
+          .slice(headerInfo.rowIndex + 1)
+          .filter((row) => !isBlankDataRow(row))
+          .map((row) => {
+            const item = {};
+            MARKETING_FIELDS.forEach((field) => {
+              item[field] = valueAt(row, headerInfo, field);
+            });
+            return item;
+          });
+      }
+
+      function parseBuyer(rows) {
+        const headerInfo = findHeaderMap(rows, BUYER_FIELDS, "Buyer UPC");
+        const lookup = new Map();
+        const duplicates = new Set();
+
+        rows
+          .slice(headerInfo.rowIndex + 1)
+          .filter((row) => !isBlankDataRow(row))
+          .forEach((row) => {
+            const wps = valueAt(row, headerInfo, "WPS#");
+            if (!wps) return;
+            const entry = {
+              wps,
+              description1: valueAt(row, headerInfo, "DESCRIPTION 1"),
+              description2: valueAt(row, headerInfo, "DESCRIPTION 2"),
+            };
+            if (lookup.has(wps)) {
+              duplicates.add(wps);
+              return;
+            }
+            lookup.set(wps, entry);
+          });
+
+        return { lookup, duplicates };
+      }
+
+      function buildOutput(marketingRows, buyerData) {
+        const processed = [];
+        const failedPartNos = [];
+        let matched = 0;
+        let blankPartNo = 0;
+
+        marketingRows.forEach((source) => {
+          const partNo = source["Part No"];
+          const duplicate = buyerData.duplicates.has(partNo);
+          const buyer = partNo ? buyerData.lookup.get(partNo) : null;
+          const hasMatch = Boolean(buyer);
+          const barcode = hasMatch
+            ? compactText(["FLY", buyer.description1, buyer.description2])
+            : "NO UPC MATCH";
+
+          if (!partNo) blankPartNo += 1;
+          if (hasMatch) matched += 1;
+          if (!hasMatch && partNo) failedPartNos.push(partNo);
+
+          processed.push({
+            values: [
+              source["P/O"],
+              source.Division,
+              source["상세Division"],
+              source.BYR,
+              source.Style,
+              source.Color,
+              source.Size,
+              source.Unit,
+              partNo,
+              "FLY ",
+              buyer?.description1 || "",
+              buyer?.description2 || "",
+              hasMatch ? barcode : "",
+              barcode,
+              source["P/O Date"],
+              source["[FHD] 최종 합의 선적일"],
+              source.Currency,
+              source["조정Qty"],
+              source["Org P/O"],
+              source["SMS여부"],
+            ],
+            source,
+            matched: hasMatch,
+            blankPartNo: !partNo,
+            duplicate,
+            reviewStatus: !partNo ? "blank" : hasMatch ? (duplicate ? "duplicate" : "matched") : "missing",
+          });
+        });
+
+        const summary = {
+          total: processed.length,
+          matched,
+          missing: processed.length - matched,
+          blankPartNo,
+          duplicateWps: buyerData.duplicates.size,
+          failedPartNos: [...new Set(failedPartNos)],
+          duplicateWpsList: [...buyerData.duplicates],
+        };
+
+        return { processed, summary };
+      }
+
+      function makeWorkbook(processed, summary) {
+        const aoa = [OUTPUT_HEADERS, ...processed.map((row) => row.values)];
+        const ws = XLSX.utils.aoa_to_sheet(aoa);
+        ws["!autofilter"] = { ref: `A1:T${Math.max(aoa.length, 1)}` };
+        ws["!freeze"] = { xSplit: 0, ySplit: 1, topLeftCell: "A2", activePane: "bottomLeft", state: "frozen" };
+        ws["!views"] = [{ state: "frozen", ySplit: 1 }];
+        ws["!cols"] = [
+          { wch: 14 },
+          { wch: 14 },
+          { wch: 16 },
+          { wch: 10 },
+          { wch: 18 },
+          { wch: 16 },
+          { wch: 12 },
+          { wch: 10 },
+          { wch: 18 },
+          { wch: 10, hidden: true },
+          { wch: 28, hidden: true },
+          { wch: 28, hidden: true },
+          { wch: 42, hidden: true },
+          { wch: 46 },
+          { wch: 14 },
+          { wch: 18 },
+          { wch: 12 },
+          { wch: 12 },
+          { wch: 16 },
+          { wch: 12 },
+        ];
+
+        const headerStyle = {
+          font: { bold: true, color: { rgb: "111827" } },
+          fill: { fgColor: { rgb: "E9EEF5" } },
+          alignment: { horizontal: "center", vertical: "center", wrapText: true },
+          border: borderStyle(),
+        };
+        const normalStyle = { border: borderStyle(), alignment: { vertical: "center", wrapText: false } };
+        const warnStyle = {
+          ...normalStyle,
+          fill: { fgColor: { rgb: "FFF2CC" } },
+        };
+        const errorStyle = {
+          ...normalStyle,
+          fill: { fgColor: { rgb: "FCE4D6" } },
+        };
+
+        for (let c = 0; c < OUTPUT_HEADERS.length; c += 1) {
+          const cell = ws[XLSX.utils.encode_cell({ r: 0, c })];
+          if (cell) cell.s = headerStyle;
+        }
+
+        processed.forEach((row, rowIndex) => {
+          const excelRow = rowIndex + 1;
+          const rowStyle = row.blankPartNo || !row.matched ? errorStyle : row.duplicate ? warnStyle : normalStyle;
+          for (let c = 0; c < OUTPUT_HEADERS.length; c += 1) {
+            const addr = XLSX.utils.encode_cell({ r: excelRow, c });
+            if (!ws[addr]) ws[addr] = { t: "s", v: "" };
+            ws[addr].s = rowStyle;
+
+            if ((c === 14 || c === 15) && ws[addr].v) {
+              ws[addr].v = formatDate(ws[addr].v);
+              ws[addr].t = "s";
+            }
+          }
+        });
+
+        const review = [
+          ["Metric", "Value"],
+          ["총 Marketing PO 행 수", summary.total],
+          ["UPC 매칭 성공 수", summary.matched],
+          ["UPC 매칭 실패 수", summary.missing],
+          ["Part No blank 수", summary.blankPartNo],
+          ["WPS# 중복 수", summary.duplicateWps],
+          [],
+          ["매칭 실패 Part No 목록"],
+          ...summary.failedPartNos.map((partNo) => [partNo]),
+          [],
+          ["중복 WPS# 목록"],
+          ...summary.duplicateWpsList.map((wps) => [wps]),
+        ];
+        const reviewWs = XLSX.utils.aoa_to_sheet(review);
+        reviewWs["!cols"] = [{ wch: 28 }, { wch: 18 }];
+        styleReviewSheet(reviewWs, summary);
+
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "GLOVE");
+        XLSX.utils.book_append_sheet(wb, reviewWs, "Review");
+        return wb;
+      }
+
+      function borderStyle() {
+        return {
+          top: { style: "thin", color: { rgb: "D9E0E8" } },
+          right: { style: "thin", color: { rgb: "D9E0E8" } },
+          bottom: { style: "thin", color: { rgb: "D9E0E8" } },
+          left: { style: "thin", color: { rgb: "D9E0E8" } },
+        };
+      }
+
+      function styleReviewSheet(ws, summary) {
+        const range = XLSX.utils.decode_range(ws["!ref"] || "A1:B1");
+        const failedHeadingRow = 7;
+        const duplicateHeadingRow = 9 + summary.failedPartNos.length;
+        for (let r = range.s.r; r <= range.e.r; r += 1) {
+          for (let c = range.s.c; c <= range.e.c; c += 1) {
+            const cell = ws[XLSX.utils.encode_cell({ r, c })];
+            if (!cell) continue;
+            cell.s = {
+              border: borderStyle(),
+              font: r === 0 || r === failedHeadingRow || r === duplicateHeadingRow ? { bold: true } : {},
+              fill: r === 0 ? { fgColor: { rgb: "E9EEF5" } } : undefined,
+            };
+          }
+        }
+      }
+
+      function formatDate(value) {
+        if (!value) return "";
+        if (value instanceof Date && !Number.isNaN(value.getTime())) {
+          return `${value.getFullYear()}/${pad2(value.getMonth() + 1)}/${pad2(value.getDate())}`;
+        }
+        const text = String(value).trim();
+        const parsed = new Date(text);
+        if (!Number.isNaN(parsed.getTime()) && /\d{4}[-/]\d{1,2}[-/]\d{1,2}/.test(text)) {
+          return `${parsed.getFullYear()}/${pad2(parsed.getMonth() + 1)}/${pad2(parsed.getDate())}`;
+        }
+        return text.replace(/-/g, "/");
+      }
+
+      function pad2(value) {
+        return String(value).padStart(2, "0");
+      }
+
+      async function processFiles() {
+        clearMessage();
+        els.downloadBtn.disabled = true;
+        state.workbook = null;
+        state.rows = [];
+        state.summary = null;
+
+        try {
+          if (!window.XLSX) throw new Error("xlsx-js-style library could not be loaded.");
+          if (!els.marketingFile.files[0]) throw new Error("Marketing PO File을 업로드해 주세요.");
+          if (!els.buyerFile.files[0]) throw new Error("Buyer UPC File을 업로드해 주세요.");
+
+          els.processBtn.disabled = true;
+          showMessage("Processing files in browser...", "info");
+
+          const [marketingWb, buyerWb] = await Promise.all([
+            readWorkbook(els.marketingFile.files[0]),
+            readWorkbook(els.buyerFile.files[0]),
+          ]);
+          const marketingRows = parseMarketing(sheetRows(firstSheet(marketingWb)));
+          const buyerData = parseBuyer(sheetRows(firstSheet(buyerWb)));
+          const { processed, summary } = buildOutput(marketingRows, buyerData);
+
+          state.rows = processed;
+          state.summary = summary;
+          state.workbook = makeWorkbook(processed, summary);
+
+          renderSummary(summary);
+          renderPreview(processed);
+          els.downloadBtn.disabled = false;
+          clearMessage();
+        } catch (error) {
+          resetPreview();
+          showMessage(error.message || String(error), "error");
+        } finally {
+          els.processBtn.disabled = false;
+        }
+      }
+
+      function renderSummary(summary) {
+        els.totalRows.textContent = summary.total;
+        els.matchedRows.textContent = summary.matched;
+        els.missingRows.textContent = summary.missing;
+        els.duplicateRows.textContent = summary.duplicateWps;
+      }
+
+      function resetPreview() {
+        renderSummary({ total: 0, matched: 0, missing: 0, duplicateWps: 0 });
+        els.previewTable.innerHTML = "";
+        els.emptyPreview.style.display = "block";
+        els.previewStatus.textContent = "Top 20 rows after processing";
+      }
+
+      function renderPreview(rows) {
+        els.emptyPreview.style.display = rows.length ? "none" : "block";
+        els.previewStatus.textContent = `${Math.min(rows.length, 20)} of ${rows.length} rows shown`;
+        const previewRows = rows.slice(0, 20);
+        const thead = `<thead><tr>${OUTPUT_HEADERS.map((header) => `<th>${escapeHtml(header).replace(/\n/g, "<br>")}</th>`).join("")}</tr></thead>`;
+        const tbody = `<tbody>${previewRows
+          .map((row) => {
+            const className = row.blankPartNo || !row.matched ? "error" : row.duplicate ? "warn" : "";
+            return `<tr class="${className}">${row.values.map((value) => `<td>${escapeHtml(value)}</td>`).join("")}</tr>`;
+          })
+          .join("")}</tbody>`;
+        els.previewTable.innerHTML = thead + tbody;
+      }
+
+      function escapeHtml(value) {
+        return String(value ?? "")
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;")
+          .replace(/'/g, "&#039;");
+      }
+
+      function downloadWorkbook() {
+        if (!state.workbook) {
+          showMessage("No processed workbook is ready. Click Process first.", "error");
+          return;
+        }
+        XLSX.writeFile(state.workbook, `marketing_po_processed_${timestamp()}.xlsx`);
+      }
+
+      function timestamp() {
+        const now = new Date();
+        return `${now.getFullYear()}${pad2(now.getMonth() + 1)}${pad2(now.getDate())}_${pad2(now.getHours())}${pad2(now.getMinutes())}`;
+      }
+
+      resetPreview();
+    </script>
+  </body>
+</html>
